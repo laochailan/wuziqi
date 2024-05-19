@@ -1,0 +1,132 @@
+{{define "header"}}
+<head>
+  <script src="https://unpkg.com/htmx.org@1.9.11"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.11/dist/ext/sse.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,200..1000;1,200..1000&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/style.css">
+
+  <title>五子棋</title>
+</head>
+{{end}}
+
+{{define "root"}}
+<!DOCTYPE html>
+<html>
+  {{template "header" .}}
+  <body hx-ext="sse" sse-connect="/events/{{index $.board.PlayerIds 0}}">
+    <div id="content">
+      <h1 id="logo">五子棋</h1>
+      {{if ne .board.Winner nil}}
+        {{template "winning_board" .}}
+      {{else if .board.ActiveTurn .player}}
+        {{block "board" .}}
+        <div id="board">
+        Your turn!
+        <table style="--nrows: {{len $.board.Tiles}}">
+          {{range $y, $row := .board.Tiles}}
+            <tr>
+            {{range $x, $s := $row}}
+              <td hx-target="#board" hx-swap="outerHTML" hx-get="/{{index $.board.PlayerIds $.player}}/move?x={{$x}}&y={{$y}}" class="{{$.board.FormatTile $s}}"></td>
+            {{end}}
+            </tr>
+          {{end}}
+        </table>
+        </div>
+        {{end}}
+      {{else}}
+        {{template "waiting_board" .}}
+      {{end}}
+    </div>
+  </body>
+</html>
+{{end}}
+
+{{define "waiting_board"}}
+<div id="board"  hx-get="/{{index $.board.PlayerIds $.player}}/wait?turn={{$.board.NextTurn}}" hx-trigger="sse:message"  hx-swap ="outerHTML">
+Waiting for other player…
+<table style="--nrows: {{len $.board.Tiles}}">
+  <tbody>
+  {{range $y, $row := .board.Tiles}}
+    <tr>
+    {{range $x, $s := $row}}
+      <td class="{{$.board.FormatTile $s}}"></td>
+    {{end}}
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+
+{{define "winning_board"}}
+<div id="board">
+{{if $.board.Winner.WinningPlayer $.board | eq $.player}}
+  You win!
+{{else}}
+  Other player wins.
+{{end}}
+<table style="--nrows: {{len $.board.Tiles}}">
+  <tbody>
+  {{range $y, $row := .board.Tiles}}
+    <tr>
+    {{range $x, $s := $row}}
+      <td class="{{$.board.FormatTile $s}} {{if $.board.WinningTile $x $y}}winning_tile{{end}}">
+        {{if ne $s 0}}<div class="turn_number">{{$s}}{{end}}</div></td>
+    {{end}}
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+
+{{define "landing"}}
+<!DOCTYPE html>
+<html>
+  {{template "header" .}}
+  <body>
+    <div id="landing">
+      <h1 id="logo">五子棋</h1>
+      
+      <form hx-get="/start" hx-swap="outerHTML">
+      <div class="form">
+      <span>Board size:</span>
+      <input type="number" name="size" min="5" max="41" step="2" value = "19">
+      <span>Your symbol:</span>
+      <div>
+      <input type="radio" name="use-x" value="true" checked><label>⨉</label>
+      <input type="radio" name="use-x" value="false"><label>◯︎</label>
+      </div>
+      <span>First player:</span>
+      <div>
+      <input type="radio" name="first-player" value="true" checked><label>You</label>
+      <input type="radio" name="first-player" value="false"><label>They</label>
+      </div>
+      <div></div>
+      <input type="submit" value="Start game">
+      </div>
+      </form>
+    </div>
+  </body>
+</html>
+{{end}}
+
+{{define "landing-link"}}
+<div id="landing-link">
+Share link with other player:
+<div id="share-link" onclick="navigator.clipboard.writeText({{.share_link}})">
+{{.share_link}}
+</div>
+
+<a href="{{.own_link}}">
+Enter
+</a>
+
+</div>
+{{end}}
