@@ -12,6 +12,7 @@ import (
 
 	"github.com/alexandrevicenzi/go-sse"
 	_ "github.com/ncruces/go-sqlite3/driver"
+	_ "github.com/ncruces/go-sqlite3/embed"
 )
 
 type Context struct {
