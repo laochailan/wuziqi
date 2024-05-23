@@ -22,7 +22,6 @@ func makeBoard(tiles [][]int) Board {
 	}
 }
 func TestWinning(t *testing.T) {
-
 	board1 := makeBoard([][]int{
 		{1, 0, 0, 0, 0},
 		{0, 8, 0, 0, 0},

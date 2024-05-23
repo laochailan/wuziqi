@@ -1,47 +1,52 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"html/template"
-	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 
 	"github.com/alexandrevicenzi/go-sse"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	_ "github.com/ncruces/go-sqlite3/driver"
 )
 
-type Template struct {
-	templ *template.Template
+type Context struct {
+	w         http.ResponseWriter
+	r         *http.Request
+	templ     *template.Template
+	sseServer *sse.Server
+	db        *sql.DB
 }
 
-func (t Template) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
-	return t.templ.ExecuteTemplate(w, name, data)
+func (c *Context) Render(name string, data interface{}) error {
+	return c.templ.ExecuteTemplate(c.w, name, data)
 }
 
-func boardOpen(c echo.Context, board *Board, player int, sseServer *sse.Server) error {
+func boardOpen(c Context, board *Board, player int) error {
 	data := map[string]interface{}{
 		"board":  board,
 		"player": player,
 	}
-	return c.Render(http.StatusOK, "root", data)
+	return c.Render("root", data)
 }
 
-func boardMove(c echo.Context, board *Board, player int, sseServer *sse.Server) error {
-	x, err := strconv.Atoi(c.QueryParam("x"))
+func boardMove(c Context, board *Board, player int) error {
+	query := c.r.URL.Query()
+	x, err := strconv.Atoi(query.Get("x"))
 	if err != nil {
 		return fmt.Errorf("invalid move: x: %w", err)
 	}
-	y, err := strconv.Atoi(c.QueryParam("y"))
+	y, err := strconv.Atoi(query.Get("y"))
 	if err != nil {
 		return fmt.Errorf("invalid move: y: %w", err)
 	}
 
 	if board.Turn%2 != player {
-		c.Render(http.StatusOK, "waiting_board", map[string]interface{}{
+		c.Render("waiting_board", map[string]interface{}{
 			"board":  board,
 			"player": player,
 		})
@@ -61,21 +66,30 @@ func boardMove(c echo.Context, board *Board, player int, sseServer *sse.Server) 
 		next_board = "winning_board"
 	}
 
-	sseServer.SendMessage("/events/"+board.PlayerIds[0], sse.SimpleMessage("update"))
+	err = UpdateBoard(c.db, board)
+	if err != nil {
+		log.Println(err)
+	}
+	c.sseServer.SendMessage("/events/"+board.PlayerIds[0], sse.SimpleMessage("update"))
 
-	return c.Render(http.StatusOK, next_board, map[string]interface{}{
+	return c.Render(next_board, map[string]interface{}{
 		"board":  board,
 		"player": player,
 	})
 }
 
-func boardWait(c echo.Context, board *Board, player int, sseServer *sse.Server) error {
-	target_turn, err := strconv.Atoi(c.QueryParam("turn"))
+func boardWait(c Context, board *Board, player int) error {
+	query := c.r.URL.Query()
+	target_turn, err := strconv.Atoi(query.Get("turn"))
 	if err != nil {
 		return fmt.Errorf("turn invalid: %w", err)
 	}
 
 	for i := 1; i < 5; i++ {
+		board, player, err = ReadBoard(c.db, board.PlayerIds[player])
+		if err != nil {
+			return fmt.Errorf("could not find board: %w", err)
+		}
 		if target_turn > board.Turn+1 {
 			return fmt.Errorf("target turn too far in the future")
 		}
@@ -85,75 +99,94 @@ func boardWait(c echo.Context, board *Board, player int, sseServer *sse.Server) 
 			if board.Winner != nil {
 				next_board = "winning_board"
 			}
-			return c.Render(http.StatusOK, next_board, map[string]interface{}{
+			return c.Render(next_board, map[string]interface{}{
 				"board":  board,
 				"player": player,
 			})
 		}
 
 		select {
-		case <-c.Request().Context().Done():
+		case <-c.r.Context().Done():
 		case <-time.After(time.Second):
 		}
 	}
 
-	return c.NoContent(http.StatusNoContent)
-
+	return fmt.Errorf("could not find new turn")
 }
 
-func findBoardAndPlayer(boards []Board, id string) (*Board, int, error) {
-	for i := range boards {
-		for playeridx, player := range boards[i].PlayerIds {
-			if id == player {
-				return &boards[i], playeridx, nil
-			}
-		}
-	}
-	return nil, 0, fmt.Errorf("Game not found")
-}
-
-func withBoardAndPlayer(f func(echo.Context, *Board, int, *sse.Server) error, c echo.Context, boards []Board, id string, sseServer *sse.Server) error {
-	board, player, err := findBoardAndPlayer(boards, id)
+func withBoardAndPlayer(f func(Context, *Board, int) error, c Context) error {
+	id := c.r.PathValue("boardid")
+	board, player, err := ReadBoard(c.db, id)
 	if err != nil {
-
-		return c.Redirect(http.StatusSeeOther, "/")
+		log.Println(err)
+		http.Redirect(c.w, c.r, "/", http.StatusSeeOther)
 	}
 
-	return f(c, board, player, sseServer)
+	err = f(c, board, player)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+	return err
 }
 
 type NewGameData struct {
-	Size        int  `query:"size"`
-	FirstPlayer bool `query:"first-player"`
-	UseX        bool `query:"use-x"`
+	Size        int
+	FirstPlayer bool
+	UseX        bool
+}
+
+func parseNewGameDataForm(r *http.Request) (*NewGameData, error) {
+	err := r.ParseForm()
+	if err != nil {
+		return nil, err
+	}
+
+	size, err := strconv.Atoi(r.FormValue("size"))
+	firstPlayer, err := strconv.ParseBool(r.FormValue("first-player"))
+	useX, err := strconv.ParseBool(r.FormValue("use-x"))
+
+	return &NewGameData{size, firstPlayer, useX}, nil
+}
+
+func writeBadRequest(w http.ResponseWriter, err error) {
+	if err != nil {
+		log.Println(err)
+	}
+	w.WriteHeader(http.StatusBadRequest)
+	w.Write([]byte("bad request"))
 }
 
 func main() {
-	boards := &[]Board{}
-
-	e := echo.New()
-	e.Renderer = &Template{
-		template.Must(template.ParseFiles("templates.html")),
+	db, err := NewDB()
+	if err != nil {
+		log.Fatal(err)
 	}
+	db.Ping()
 
-	e.Use(middleware.Logger())
+	templ := template.Must(template.ParseFiles("templates.html"))
 
 	sseServer := sse.NewServer(nil)
 	defer sseServer.Shutdown()
 
-	sseServerEcho := echo.WrapHandler(sseServer)
+	http.Handle("GET /events/", sseServer)
+	http.Handle("GET /assets/", http.FileServer(http.Dir(".")))
 
-	e.GET("/events/*", sseServerEcho)
+	http.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		err := templ.ExecuteTemplate(w, "landing", nil)
 
-	e.Static("/assets/*", "assets")
-	e.GET("/", func(c echo.Context) error {
-		return c.Render(http.StatusOK, "landing", nil)
-	})
-	e.GET("/start", func(c echo.Context) error {
-		var data NewGameData
-		if err := c.Bind(&data); err != nil {
-			return c.String(http.StatusBadRequest, "bad request")
+		if err != nil {
+			writeBadRequest(w, err)
 		}
+	})
+
+	http.HandleFunc("GET /start", func(w http.ResponseWriter, r *http.Request) {
+		data, err := parseNewGameDataForm(r)
+		if err != nil {
+			writeBadRequest(w, err)
+			return
+		}
+
 		newBoard := createBoard(data.Size, data.FirstPlayer != data.UseX)
 
 		own_id := newBoard.PlayerIds[0]
@@ -162,29 +195,37 @@ func main() {
 			own_id, other_id = other_id, own_id
 		}
 
-		*boards = append(*boards, newBoard)
-		share_link, err := url.JoinPath("http://", c.Request().Host, c.Request().URL.Path, "..", other_id, "/")
+		err = InsertBoard(db, &newBoard)
 		if err != nil {
-			return err
+			writeBadRequest(w, err)
 		}
 
-		return c.Render(http.StatusOK, "landing-link", map[string]interface{}{
+		share_link, err := url.JoinPath("http://", r.Host, r.URL.Path, "../board/", other_id, "/")
+		if err != nil {
+			writeBadRequest(w, err)
+			return
+		}
+
+		err = templ.ExecuteTemplate(w, "landing-link", map[string]interface{}{
 			"share_link": share_link,
-			"own_link":   "/" + own_id + "/",
+			"own_link":   "/board/" + own_id + "/",
 		})
+
+		if err != nil {
+			writeBadRequest(w, err)
+		}
 	})
 
-	e.GET("/:boardid/", func(c echo.Context) error {
-		return withBoardAndPlayer(boardOpen, c, *boards, c.Param("boardid"), sseServer)
+	http.HandleFunc("GET /board/{boardid}/{$}", func(w http.ResponseWriter, r *http.Request) {
+		withBoardAndPlayer(boardOpen, Context{w, r, templ, sseServer, db})
 	})
 
-	e.GET("/:boardid/move", func(c echo.Context) error {
-		return withBoardAndPlayer(boardMove, c, *boards, c.Param("boardid"), sseServer)
+	http.HandleFunc("GET /board/{boardid}/move", func(w http.ResponseWriter, r *http.Request) {
+		withBoardAndPlayer(boardMove, Context{w, r, templ, sseServer, db})
+	})
+	http.HandleFunc("GET /board/{boardid}/wait", func(w http.ResponseWriter, r *http.Request) {
+		withBoardAndPlayer(boardWait, Context{w, r, templ, sseServer, db})
 	})
 
-	e.GET("/:boardid/wait", func(c echo.Context) error {
-		return withBoardAndPlayer(boardWait, c, *boards, c.Param("boardid"), sseServer)
-	})
-
-	e.Logger.Fatal(e.Start(":1323"))
+	log.Fatal(http.ListenAndServe(":1323", nil))
 }

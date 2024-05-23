@@ -1,14 +1,17 @@
 package main
 
-import "github.com/lithammer/shortuuid/v3"
+import (
+	"encoding/json"
+
+	"github.com/lithammer/shortuuid/v3"
+)
 
 type Board struct {
 	PlayerIds []string
 	FirstUseX bool
 	Tiles     [][]int
 	Turn      int
-
-	Winner WinnerSet
+	Winner    WinnerSet
 }
 
 func createBoard(size int, firstUseX bool) Board {
@@ -93,6 +96,30 @@ func (f FiveInARow) WinningPlayer(board *Board) int {
 }
 
 type WinnerSet map[FiveInARow]bool
+
+func (fm *WinnerSet) UnmarshalJSON(b []byte) error {
+	var winners []FiveInARow
+	if err := json.Unmarshal(b, &winners); err != nil {
+		return err
+	}
+
+	*fm = make(map[FiveInARow]bool)
+
+	for _, w := range winners {
+		(*fm)[w] = true
+	}
+
+	return nil
+}
+
+func (fm *WinnerSet) MarshalJSON() ([]byte, error) {
+	var winners []FiveInARow
+	for w, _ := range *fm {
+		winners = append(winners, w)
+	}
+
+	return json.Marshal(winners)
+}
 
 func (fm WinnerSet) WinningTile(x, y int) bool {
 	for f := range fm {

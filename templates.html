@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,200..1000;1,200..1000&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/assets/style.css">
 
-  <title>五子棋</title>
+  <title>五醍棋</title>
 </head>
 {{end}}
 
@@ -21,7 +21,7 @@
   {{template "header" .}}
   <body hx-ext="sse" sse-connect="/events/{{index $.board.PlayerIds 0}}">
     <div id="content">
-      <h1 id="logo">五子棋</h1>
+      <h1 id="logo">五醍棋</h1>
       {{if ne .board.Winner nil}}
         {{template "winning_board" .}}
       {{else if .board.ActiveTurn .player}}
@@ -32,7 +32,7 @@
           {{range $y, $row := .board.Tiles}}
             <tr>
             {{range $x, $s := $row}}
-              <td hx-target="#board" hx-swap="outerHTML" hx-get="/{{index $.board.PlayerIds $.player}}/move?x={{$x}}&y={{$y}}" class="{{$.board.FormatTile $s}}"></td>
+              <td hx-target="#board" hx-swap="outerHTML" hx-get="/board/{{index $.board.PlayerIds $.player}}/move?x={{$x}}&y={{$y}}" class="{{$.board.FormatTile $s}}"></td>
             {{end}}
             </tr>
           {{end}}
@@ -48,7 +48,7 @@
 {{end}}
 
 {{define "waiting_board"}}
-<div id="board"  hx-get="/{{index $.board.PlayerIds $.player}}/wait?turn={{$.board.NextTurn}}" hx-trigger="sse:message"  hx-swap ="outerHTML">
+<div id="board"  hx-get="/board/{{index $.board.PlayerIds $.player}}/wait?turn={{$.board.NextTurn}}" hx-trigger="sse:message"  hx-swap ="outerHTML">
 Waiting for other player…
 <table style="--nrows: {{len $.board.Tiles}}">
   <tbody>
