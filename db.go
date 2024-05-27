@@ -4,10 +4,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
 )
 
 func NewDB() (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", "file:/db/test.db")
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to database: %w", err)

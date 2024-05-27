@@ -11,8 +11,7 @@ import (
 	"time"
 
 	"github.com/alexandrevicenzi/go-sse"
-	_ "github.com/ncruces/go-sqlite3/driver"
-	_ "github.com/ncruces/go-sqlite3/embed"
+	_ "github.com/lib/pq"
 )
 
 type Context struct {
@@ -228,5 +227,30 @@ func main() {
 		withBoardAndPlayer(boardWait, Context{w, r, templ, sseServer, db})
 	})
 
-	log.Fatal(http.ListenAndServe(":1323", nil))
+	http.HandleFunc("GET /test", func(w http.ResponseWriter, r *http.Request) {
+		board := createBoard(19, true)
+
+		board.Tiles[2][2] = 1
+		board.Tiles[2][3] = 2
+		board.Tiles[2][4] = 3
+		board.Tiles[3][5] = 4
+		board.Tiles[4][5] = 6
+		board.Tiles[5][5] = 8
+		board.Tiles[6][5] = 10
+
+		if r.URL.Query().Get("win") != "" {
+			board.Winner = board.findNextNextWinning()
+		}
+
+		err := templ.ExecuteTemplate(w, "root", map[string]interface{}{
+			"board":  &board,
+			"player": 0,
+		})
+		if err != nil {
+			log.Print(err)
+		}
+
+	})
+
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }

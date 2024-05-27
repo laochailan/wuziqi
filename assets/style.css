@@ -5,7 +5,7 @@ body {
   flex-flow:column;
   align-items: center;
   margin-top:1em;
-  height:calc(100vh - 2em);
+  /* height:calc(100vh - 2em); */
 
   --bg-dark: #3B5249;
   --bg-light: #e6dbc3;
@@ -21,20 +21,19 @@ body {
   color: var(--text-dark);
   white-space: nowrap;
 
-  flex: 1 1 auto;
-  display: flex;
-  flex-flow:column;
-  height: 100%;
-  /* width: 50%; */
-  width: min(90%, calc(90vh - 5em));
-}
+  width: 90vmin;
+  height:90vmin;
 
-h1 {
-  font-family: Serif;
+  flex: 0 1 auto;
+  /* display: flex; */
+  flex-flow:column;
+  /* height: 100%; */
+  /* width: 50%; */
 }
 
 #logo {
   font-family: "Ma Shan Zheng";
+  font-size: 8vh;
   margin: 0;
   flex: 0 1 auto;
 }
@@ -44,19 +43,19 @@ h1 {
   flex: 1 1 auto;
   padding: 0;
   margin-top: 1em;
+  height:100%;
+  margin: auto;
 }
 
+
 table {
+  user-select: none;
   border: 2px solid var(--text-dark);
   border-collapse: collapse;
   table-layout: fixed;
-  line-height: 0px;
-  /* width:100%; */
-  background: var(--bg-light);
-  /* height:calc(100% - var(--nrows) * 2px); */
-  width:100%;
-  aspect-ratio: 1/1;
-  /* width:calc(100% - var(--nrows) * 1px); */
+  width: 100vh;
+  max-width:95%;
+  margin: auto;
 
 
 }
@@ -64,16 +63,31 @@ table {
 td {
   border: 1px solid;
   background-size: 100%;
-  height: calc(100%/var(--nrows));
+  /* position: relative; */
+  /* height: calc(100%/var(--nrows)); */
+  cursor: pointer;
   width: calc(100%/var(--nrows));
+  padding: 0;
 }
+
+td img {
+  display: block;
+  width: 100%;
+}
+
+.waiting_board td {
+  cursor: default;
+}
+
 
 .o_tile {
   background-image: url(/assets/circle.svg);
+  cursor: default;
 }
 
 .x_tile {
   background-image: url(/assets/cross.svg);
+  cursor: default;
 }
 
 .winning_tile {
@@ -83,14 +97,14 @@ td {
 
 .x_tile .turn_number {
   border: 1px solid black;
-  /* padding-left:0.5ex; */
-  /* padding-right:0.5ex; */
   background-color: var(--bg-light);
-  line-height: 2.5ex;
 }
 .turn_number {
-  border-radius: 2ex;
-  font-size: 1.8vh;
+  border-radius: 50%;
+  text-align: center;
+  width:70%;
+  height:70%;
+  margin:auto;
 }
 
 #landing {

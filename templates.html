@@ -32,7 +32,7 @@
           {{range $y, $row := .board.Tiles}}
             <tr>
             {{range $x, $s := $row}}
-              <td hx-target="#board" hx-swap="outerHTML" hx-get="/board/{{index $.board.PlayerIds $.player}}/move?x={{$x}}&y={{$y}}" class="{{$.board.FormatTile $s}}"></td>
+              <td hx-target="#board" hx-swap="outerHTML" hx-get="/board/{{index $.board.PlayerIds $.player}}/move?x={{$x}}&y={{$y}}" class="{{$.board.FormatTile $s}}"><img src="/assets/empty.svg"></td>
             {{end}}
             </tr>
           {{end}}
@@ -48,14 +48,14 @@
 {{end}}
 
 {{define "waiting_board"}}
-<div id="board"  hx-get="/board/{{index $.board.PlayerIds $.player}}/wait?turn={{$.board.NextTurn}}" hx-trigger="sse:message"  hx-swap ="outerHTML">
+<div id="board" class="waiting_board"  hx-get="/board/{{index $.board.PlayerIds $.player}}/wait?turn={{$.board.NextTurn}}" hx-trigger="sse:message"  hx-swap ="outerHTML">
 Waiting for other player…
 <table style="--nrows: {{len $.board.Tiles}}">
   <tbody>
   {{range $y, $row := .board.Tiles}}
     <tr>
     {{range $x, $s := $row}}
-      <td class="{{$.board.FormatTile $s}}"></td>
+      <td class="{{$.board.FormatTile $s}}"><img src="/assets/empty.svg"></td>
     {{end}}
     </tr>
   {{end}}
@@ -77,7 +77,7 @@ Waiting for other player…
     <tr>
     {{range $x, $s := $row}}
       <td class="{{$.board.FormatTile $s}} {{if $.board.WinningTile $x $y}}winning_tile{{end}}">
-        {{if ne $s 0}}<div class="turn_number">{{$s}}{{end}}</div></td>
+        {{if ne $s 0}}<div class="turn_number">{{$s}}</div>{{else}}<img src="/assets/empty.svg">{{end}}</td>
     {{end}}
     </tr>
   {{end}}
@@ -92,7 +92,7 @@ Waiting for other player…
   {{template "header" .}}
   <body>
     <div id="landing">
-      <h1 id="logo">五子棋</h1>
+      <h1 id="logo">五醍棋</h1>
       
       <form hx-get="/start" hx-swap="outerHTML">
       <div class="form">
