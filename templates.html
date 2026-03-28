@@ -1,7 +1,7 @@
 {{define "header"}}
 <head>
-  <script src="https://unpkg.com/htmx.org@1.9.11"></script>
-  <script src="https://unpkg.com/htmx.org@1.9.11/dist/ext/sse.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
@@ -9,9 +9,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,200..1000;1,200..1000&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/style.css">
+  <link rel="stylesheet" href="{{ .baseURL }}/assets/style.css">
 
   <title>五醍棋</title>
+
+  <script>
+    const boardSize = {{ .boardSize }};
+    const baseURL = "{{ .baseURL }}";
+    const socketAddr = "ws://" + window.location.host + baseURL + "/board/{{ .ownId }}/join"
+  </script>
+  <script src="{{ .baseURL }}/assets/script.js"></script>
 </head>
 {{end}}
 
@@ -19,72 +26,30 @@
 <!DOCTYPE html>
 <html>
   {{template "header" .}}
-  <body hx-ext="sse" sse-connect="/events/{{index $.board.PlayerIds 0}}">
+  <body onload="onload()">
     <div id="content">
-      <h1 id="logo">五醍棋</h1>
-      {{if ne .board.Winner nil}}
-        {{template "winning_board" .}}
-      {{else if .board.ActiveTurn .player}}
-        {{block "board" .}}
-        <div id="board">
-        Your turn!
-        <table style="--nrows: {{len $.board.Tiles}}">
-          {{range $y, $row := .board.Tiles}}
-            <tr>
-            {{range $x, $s := $row}}
-              <td hx-target="#board" hx-swap="outerHTML" hx-get="/board/{{index $.board.PlayerIds $.player}}/move?x={{$x}}&y={{$y}}" class="{{$.board.FormatTile $s}}"><img src="/assets/empty.svg"></td>
-            {{end}}
-            </tr>
-          {{end}}
-        </table>
+      <h1 id="logo">五子棋</h1>
+      {{if .shareLink}}
+        <div id="share-link-box" class="link-box {{if ne .boardWinner -1}}deactivated{{end}}">
+        Share link with other player:
+        <div id="share-link" onclick="copyClipboard({{.shareLink}})">
+        <img src="{{ .baseURL }}/assets/copy.svg" class="copy-symbol" width="20" height="20" alt="copy to clipboard"><span>{{.shareLink}}</span>
         </div>
-        {{end}}
-      {{else}}
-        {{template "waiting_board" .}}
+        </div>
       {{end}}
+
+      <div id="message-box"></div>
+      <canvas id="boardCanvas" width="400" height="400"></canvas>
+      <div id="resign-div">
+      <button id="resign-link" class="button" onclick="resign()">Resign</button>
+      </div>
+
+      <p><b>Rules:</b> Take turns putting your symbol on the board. The first one wo can reach five in a row wins.</p>
     </div>
   </body>
 </html>
 {{end}}
 
-{{define "waiting_board"}}
-<div id="board" class="waiting_board"  hx-get="/board/{{index $.board.PlayerIds $.player}}/wait?turn={{$.board.NextTurn}}" hx-trigger="sse:message"  hx-swap ="outerHTML">
-Waiting for other player…
-<table style="--nrows: {{len $.board.Tiles}}">
-  <tbody>
-  {{range $y, $row := .board.Tiles}}
-    <tr>
-    {{range $x, $s := $row}}
-      <td class="{{$.board.FormatTile $s}}"><img src="/assets/empty.svg"></td>
-    {{end}}
-    </tr>
-  {{end}}
-  </tbody>
-</table>
-</div>
-{{end}}
-
-{{define "winning_board"}}
-<div id="board">
-{{if $.board.Winner.WinningPlayer $.board | eq $.player}}
-  You win!
-{{else}}
-  Other player wins.
-{{end}}
-<table style="--nrows: {{len $.board.Tiles}}">
-  <tbody>
-  {{range $y, $row := .board.Tiles}}
-    <tr>
-    {{range $x, $s := $row}}
-      <td class="{{$.board.FormatTile $s}} {{if $.board.WinningTile $x $y}}winning_tile{{end}}">
-        {{if ne $s 0}}<div class="turn_number">{{$s}}</div>{{else}}<img src="/assets/empty.svg">{{end}}</td>
-    {{end}}
-    </tr>
-  {{end}}
-  </tbody>
-</table>
-</div>
-{{end}}
 
 {{define "landing"}}
 <!DOCTYPE html>
@@ -92,16 +57,16 @@ Waiting for other player…
   {{template "header" .}}
   <body>
     <div id="landing">
-      <h1 id="logo">五醍棋</h1>
+      <h1 id="logo">五子棋</h1>
       
-      <form hx-get="/start" hx-swap="outerHTML">
+      <form action="{{ .baseURL }}/start" method="get">
       <div class="form">
       <span>Board size:</span>
-      <input type="number" name="size" min="5" max="41" step="2" value = "19">
+      <input type="number" name="size" min="5" max="{{ .maxBoardSize }}" step="2" value = "15">
       <span>Your symbol:</span>
       <div>
-      <input type="radio" name="use-x" value="true" checked><label>⨉</label>
-      <input type="radio" name="use-x" value="false"><label>◯︎</label>
+      <input type="radio" name="use-x" value="true" checked><img src="{{ .baseURL }}/assets/cross.svg" width="14" height="14">
+      <input type="radio" name="use-x" value="false"><img src="{{ .baseURL }}/assets/circle.svg" width="14" height="14">
       </div>
       <span>First player:</span>
       <div>
@@ -109,24 +74,10 @@ Waiting for other player…
       <input type="radio" name="first-player" value="false"><label>They</label>
       </div>
       <div></div>
-      <input type="submit" value="Start game">
+      <input class="button" type="submit" value="Start game">
       </div>
       </form>
     </div>
   </body>
 </html>
-{{end}}
-
-{{define "landing-link"}}
-<div id="landing-link">
-Share link with other player:
-<div id="share-link" onclick="navigator.clipboard.writeText({{.share_link}})">
-{{.share_link}}
-</div>
-
-<a href="{{.own_link}}">
-Enter
-</a>
-
-</div>
 {{end}}

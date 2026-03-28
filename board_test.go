@@ -1,36 +1,48 @@
 package main
 
 import (
+	"slices"
 	"testing"
 )
 
 func makeBoard(tiles [][]int) Board {
 	turn := 0
-	for _, row := range tiles {
-		for _, t := range row {
+	flatTiles := make([]int, len(tiles)*len(tiles[0]))
+	for y, row := range tiles {
+		if len(row) != len(tiles) {
+			panic("nonsquare tiles")
+		}
+		for x, t := range row {
+			flatTiles[y*len(row)+x] = t
 			if t > turn {
 				turn = t
 			}
 		}
 	}
 	return Board{
-		[]string{"a", "b"},
 		true,
-		tiles,
+		len(tiles),
+		flatTiles,
 		turn + 1,
-		nil,
+		-1,
 	}
 }
+
 func TestWinning(t *testing.T) {
 	board1 := makeBoard([][]int{
 		{1, 0, 0, 0, 0},
 		{0, 8, 0, 0, 0},
 		{1, 3, 5, 7, 9},
 		{0, 0, 0, 2, 0},
+		{0, 0, 0, 0, 0},
 	})
 
-	win1 := &FiveInARow{0, 2, 1, 0}
-	lose1 := &FiveInARow{0, 0, 1, 0}
+	if !board1.WasWinningMove(BoardMove{0, 2}) {
+		t.Errorf("should win")
+	}
+	if board1.WasWinningMove(BoardMove{3, 3}) {
+		t.Errorf("should not win")
+	}
 
 	board2 := makeBoard([][]int{
 		{0, 0, 0, 0, 0, 0},
@@ -38,16 +50,24 @@ func TestWinning(t *testing.T) {
 		{1, 3, 4, 7, 9, 0},
 		{0, 0, 0, 2, 0, 0},
 		{0, 0, 0, 0, 12, 0},
-		{0, 0, 0, 13, 0, 0},
+		{0, 0, 0, 13, 14, 0},
 	})
 
-	copiedTiles := make([][]int, len(board2.Tiles))
-	for i := range copiedTiles {
-		copiedTiles[i] = make([]int, len(board2.Tiles[i]))
-		copy(copiedTiles[i], board2.Tiles[i])
+	copiedTiles := make([]int, len(board2.Tiles))
+	copy(copiedTiles, board2.Tiles)
+	copiedTurn := board2.Turn
+
+	if board2.WasWinningMove(BoardMove{2, 2}) {
+		t.Errorf("should not win")
 	}
 
-	win2 := &FiveInARow{0, 0, 1, 1}
+	if w := board2.PredictWinner(BoardMove{1, 1}); w != board2.PlayerOfTurn(2) {
+		t.Errorf("wrong winner %d", w)
+	}
+
+	if !slices.Equal(board2.Tiles, copiedTiles) || board2.Turn != copiedTurn {
+		t.Errorf("board was modified when it should not have been")
+	}
 
 	board3 := makeBoard([][]int{
 		{0, 0, 0, 0, 0, 0},
@@ -58,52 +78,45 @@ func TestWinning(t *testing.T) {
 		{0, 0, 0, 0, 0, 0},
 	})
 
+	if w := board3.PredictWinner(BoardMove{3, 2}); w != board3.PlayerOfTurn(1) {
+		t.Fatalf("wrong winner %d", w)
+	}
+
+	if w := board3.PredictWinner(BoardMove{3, 3}); w != board3.PlayerOfTurn(1) {
+		t.Errorf("wrong winner %d", w)
+	}
+
 	board4 := makeBoard([][]int{
-		{0, 8, 0, 0, 0, 0},
-		{0, 3, 5, 7, 9, 0},
-		{0, 0, 0, 2, 0, 0},
+		{0, 0, 16, 0, 0, 0},
+		{1, 3, 5, 7, 0, 0},
+		{0, 0, 0, 0, 15, 0},
+		{0, 0, 0, 13, 0, 0},
+		{0, 0, 11, 0, 0, 0},
+		{0, 9, 0, 0, 0, 0},
 	})
 
-	win4 := &FiveInARow{0, 1, 1, 0}
-
-	if lose1.Wins(board1.Tiles) {
-		t.Errorf("should not win")
+	if w := board4.PredictWinner(BoardMove{2, 0}); w != board4.PlayerOfTurn(1) {
+		t.Errorf("wrong winner %d", w)
 	}
-	if !win1.Wins(board1.Tiles) {
-		t.Errorf("win1 should win board1")
-	}
-
-	if win := board1.findWinning(); win == nil || *win != *win1 {
-		t.Errorf("board1 win: %x != %x", win, win1)
+	board4.ApplyMove(BoardMove{2, 3})
+	if w := board4.PredictWinner(BoardMove{2, 3}); w != board4.PlayerOfTurn(1) {
+		t.Errorf("wrong winner %d", w)
 	}
 
-	if win := board2.findWinning(); win != nil {
-		t.Errorf("board2 won too soon %x", win)
+	board5 := makeBoard([][]int{
+		{0, 0, 0, 0, 0, 0},
+		{1, 2, 4, 6, 8, 0},
+		{0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0},
+	})
+
+	if board5.WasWinningMove(BoardMove{5, 1}) {
+		t.Errorf("false winning move")
 	}
 
-	if win := board2.findNextWinning(); win == nil || *win != *win2 {
-		t.Errorf("board2 should win: %x != %x", win, win2)
-	}
-
-	for y, row := range board2.Tiles {
-		for x, tile := range row {
-			if tile != copiedTiles[y][x] {
-				t.Errorf("board2 Tiles were messed with at (%d, %d): %x != %x", x, y, tile, copiedTiles[y][x])
-			}
-		}
-	}
-	win := board2.findNextNextWinning()
-	if won, ok := win[*win2]; !ok || !won {
-		t.Errorf("board2 should win: %v != %x", win, win2)
-	}
-
-	win = board3.findNextNextWinning()
-	if won, ok := win[*win2]; !ok || !won {
-		t.Errorf("board3 should win: %v != %x", win, win2)
-	}
-
-	win = board4.findNextNextWinning()
-	if won, ok := win[*win4]; !ok || !won {
-		t.Errorf("board4 win: %v != %x", win, win4)
+	if w := board5.PredictWinner(BoardMove{5, 1}); w != -1 {
+		t.Errorf("wrong winner %d", w)
 	}
 }

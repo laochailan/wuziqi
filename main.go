@@ -1,134 +1,25 @@
 package main
 
 import (
-	"database/sql"
+	"embed"
+	"flag"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 
-	"github.com/alexandrevicenzi/go-sse"
-	_ "github.com/lib/pq"
+	"golang.org/x/time/rate"
 )
 
-type Context struct {
-	w         http.ResponseWriter
-	r         *http.Request
-	templ     *template.Template
-	sseServer *sse.Server
-	db        *sql.DB
-}
+//go:embed templates.html
+var templateFS embed.FS
 
-func (c *Context) Render(name string, data interface{}) error {
-	return c.templ.ExecuteTemplate(c.w, name, data)
-}
-
-func boardOpen(c Context, board *Board, player int) error {
-	data := map[string]interface{}{
-		"board":  board,
-		"player": player,
-	}
-	return c.Render("root", data)
-}
-
-func boardMove(c Context, board *Board, player int) error {
-	query := c.r.URL.Query()
-	x, err := strconv.Atoi(query.Get("x"))
-	if err != nil {
-		return fmt.Errorf("invalid move: x: %w", err)
-	}
-	y, err := strconv.Atoi(query.Get("y"))
-	if err != nil {
-		return fmt.Errorf("invalid move: y: %w", err)
-	}
-
-	if board.Turn%2 != player {
-		c.Render("waiting_board", map[string]interface{}{
-			"board":  board,
-			"player": player,
-		})
-	}
-
-	if board.Tiles[y][x] == 0 {
-		board.Tiles[y][x] = board.Turn
-		board.Turn += 1
-	} else {
-		return fmt.Errorf("invalid move")
-	}
-
-	board.Winner = board.findNextNextWinning()
-
-	next_board := "waiting_board"
-	if board.Winner != nil {
-		next_board = "winning_board"
-	}
-
-	err = UpdateBoard(c.db, board)
-	if err != nil {
-		log.Println(err)
-	}
-	c.sseServer.SendMessage("/events/"+board.PlayerIds[0], sse.SimpleMessage("update"))
-
-	return c.Render(next_board, map[string]interface{}{
-		"board":  board,
-		"player": player,
-	})
-}
-
-func boardWait(c Context, board *Board, player int) error {
-	query := c.r.URL.Query()
-	target_turn, err := strconv.Atoi(query.Get("turn"))
-	if err != nil {
-		return fmt.Errorf("turn invalid: %w", err)
-	}
-
-	for i := 1; i < 5; i++ {
-		board, player, err = ReadBoard(c.db, board.PlayerIds[player])
-		if err != nil {
-			return fmt.Errorf("could not find board: %w", err)
-		}
-		if target_turn > board.Turn+1 {
-			return fmt.Errorf("target turn too far in the future")
-		}
-
-		if target_turn == board.Turn {
-			next_board := "board"
-			if board.Winner != nil {
-				next_board = "winning_board"
-			}
-			return c.Render(next_board, map[string]interface{}{
-				"board":  board,
-				"player": player,
-			})
-		}
-
-		select {
-		case <-c.r.Context().Done():
-		case <-time.After(time.Second):
-		}
-	}
-
-	return fmt.Errorf("could not find new turn")
-}
-
-func withBoardAndPlayer(f func(Context, *Board, int) error, c Context) error {
-	id := c.r.PathValue("boardid")
-	board, player, err := ReadBoard(c.db, id)
-	if err != nil {
-		log.Println(err)
-		http.Redirect(c.w, c.r, "/", http.StatusSeeOther)
-	}
-
-	err = f(c, board, player)
-	if err != nil {
-		log.Println(err)
-		return err
-	}
-	return err
-}
+//go:embed assets/*
+var staticFS embed.FS
 
 type NewGameData struct {
 	Size        int
@@ -143,8 +34,17 @@ func parseNewGameDataForm(r *http.Request) (*NewGameData, error) {
 	}
 
 	size, err := strconv.Atoi(r.FormValue("size"))
+	if err != nil {
+		return nil, err
+	}
 	firstPlayer, err := strconv.ParseBool(r.FormValue("first-player"))
+	if err != nil {
+		return nil, err
+	}
 	useX, err := strconv.ParseBool(r.FormValue("use-x"))
+	if err != nil {
+		return nil, err
+	}
 
 	return &NewGameData{size, firstPlayer, useX}, nil
 }
@@ -157,23 +57,54 @@ func writeBadRequest(w http.ResponseWriter, err error) {
 	w.Write([]byte("bad request"))
 }
 
-func main() {
-	db, err := NewDB()
-	if err != nil {
-		log.Fatal(err)
+func getRequestURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
 	}
-	db.Ping()
+	if forwardedScheme := r.Header.Get("X-Forwarded-Proto"); forwardedScheme != "" {
+		scheme = forwardedScheme
+	}
+	host := r.Host
+	if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
+		host = forwardedHost
+	}
+	prefix := r.Header.Get("X-Forwarded-Prefix")
+	return fmt.Sprintf("%s://%s/%s/", scheme, host, prefix)
+}
 
-	templ := template.Must(template.ParseFiles("templates.html"))
+func main() {
+	listenAddr := flag.String("listen-addr", ":8080", "the listen address for the webserver")
+	gameTimeout := flag.Duration("game-timeout", time.Hour, "maximum duration for one game")
+	connectionTimeout := flag.Duration("connection-timeout", 5*time.Minute, "how long to wait for players to reconnect")
+	rateLimit := flag.Duration("rate-limit", 250*time.Millisecond, "minimum time between player actions")
+	maxGames := flag.Int("max-games", 100, "maximum number of concurrently running games")
+	maxBoardSize := flag.Int("max-board-size", 43, "maximum board size")
+	flag.Parse()
 
-	sseServer := sse.NewServer(nil)
-	defer sseServer.Shutdown()
+	gameManager := createGameManager(
+		*maxGames,
+		*gameTimeout,
+		*connectionTimeout,
+		*rateLimit,
+		*maxBoardSize,
+	)
 
-	http.Handle("GET /events/", sseServer)
-	http.Handle("GET /assets/", http.FileServer(http.Dir(".")))
+	limiter := rate.NewLimiter(rate.Limit(time.Second.Nanoseconds())/rate.Limit((*rateLimit).Nanoseconds()), 5)
+
+	templ := template.Must(template.ParseFS(templateFS, "templates.html"))
+
+	http.Handle("GET /assets/", http.FileServer(http.FS(staticFS)))
 
 	http.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		err := templ.ExecuteTemplate(w, "landing", nil)
+		if !limiter.Allow() {
+			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+			return
+		}
+		err := templ.ExecuteTemplate(w, "landing", map[string]any{
+			"baseURL":      r.Header.Get("X-Forwarded-Prefix"),
+			"maxBoardSize": maxBoardSize,
+		})
 
 		if err != nil {
 			writeBadRequest(w, err)
@@ -181,76 +112,83 @@ func main() {
 	})
 
 	http.HandleFunc("GET /start", func(w http.ResponseWriter, r *http.Request) {
+		if !limiter.Allow() {
+			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+			return
+		}
 		data, err := parseNewGameDataForm(r)
 		if err != nil {
 			writeBadRequest(w, err)
 			return
 		}
 
-		newBoard := createBoard(data.Size, data.FirstPlayer != data.UseX)
-
-		own_id := newBoard.PlayerIds[0]
-		other_id := newBoard.PlayerIds[1]
-		if data.FirstPlayer {
-			own_id, other_id = other_id, own_id
-		}
-
-		err = InsertBoard(db, &newBoard)
+		ids, err := gameManager.startGame(data.Size, (!data.UseX) != data.FirstPlayer)
 		if err != nil {
 			writeBadRequest(w, err)
 		}
 
-		share_link, err := url.JoinPath("http://", r.Host, r.URL.Path, "../board/", other_id, "/")
+		if data.FirstPlayer {
+			ids[0], ids[1] = ids[1], ids[0]
+		}
+
+		prefix := r.Header.Get("X-Forwarded-Prefix")
+		http.Redirect(w, r, fmt.Sprintf("%s/board/%s/?share=%s", prefix, ids[0], ids[1]), http.StatusSeeOther)
+	})
+
+	http.HandleFunc("GET /board/{boardid}/{$}", func(w http.ResponseWriter, r *http.Request) {
+		if !limiter.Allow() {
+			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+			return
+		}
+		board, _ := gameManager.boardAndPlayer(r.PathValue("boardid"))
+		if board == nil {
+			writeBadRequest(w, fmt.Errorf("player tried to join nonexisting game"))
+			return
+		}
+
+		var share_link string
+
+		if share := r.URL.Query().Get("share"); share != "" {
+			var err error
+			share_link, err = url.JoinPath(getRequestURL(r), "board", share, "/")
+			if err != nil {
+				writeBadRequest(w, err)
+				return
+			}
+		}
+		err := templ.ExecuteTemplate(w, "root", map[string]any{
+			"baseURL":     r.Header.Get("X-Forwarded-Prefix"),
+			"shareLink":   share_link,
+			"ownId":       r.PathValue("boardid"),
+			"boardSize":   board.Size,
+			"boardWinner": board.Winner})
 		if err != nil {
 			writeBadRequest(w, err)
 			return
 		}
+	})
 
-		err = templ.ExecuteTemplate(w, "landing-link", map[string]interface{}{
-			"share_link": share_link,
-			"own_link":   "/board/" + own_id + "/",
-		})
+	http.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		if !limiter.Allow() {
+			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+			return
+		}
+		numGames := gameManager.ActiveGames()
 
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, fmt.Sprintf("%f", float32(numGames)/float32(*maxGames)))
+	})
+
+	http.HandleFunc("GET /board/{boardid}/join", func(w http.ResponseWriter, r *http.Request) {
+		if !limiter.Allow() {
+			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+			return
+		}
+		err := gameManager.joinGame(r.PathValue("boardid"), w, r)
 		if err != nil {
-			writeBadRequest(w, err)
+			log.Println(err)
 		}
 	})
 
-	http.HandleFunc("GET /board/{boardid}/{$}", func(w http.ResponseWriter, r *http.Request) {
-		withBoardAndPlayer(boardOpen, Context{w, r, templ, sseServer, db})
-	})
-
-	http.HandleFunc("GET /board/{boardid}/move", func(w http.ResponseWriter, r *http.Request) {
-		withBoardAndPlayer(boardMove, Context{w, r, templ, sseServer, db})
-	})
-	http.HandleFunc("GET /board/{boardid}/wait", func(w http.ResponseWriter, r *http.Request) {
-		withBoardAndPlayer(boardWait, Context{w, r, templ, sseServer, db})
-	})
-
-	http.HandleFunc("GET /test", func(w http.ResponseWriter, r *http.Request) {
-		board := createBoard(19, true)
-
-		board.Tiles[2][2] = 1
-		board.Tiles[2][3] = 2
-		board.Tiles[2][4] = 3
-		board.Tiles[3][5] = 4
-		board.Tiles[4][5] = 6
-		board.Tiles[5][5] = 8
-		board.Tiles[6][5] = 10
-
-		if r.URL.Query().Get("win") != "" {
-			board.Winner = board.findNextNextWinning()
-		}
-
-		err := templ.ExecuteTemplate(w, "root", map[string]interface{}{
-			"board":  &board,
-			"player": 0,
-		})
-		if err != nil {
-			log.Print(err)
-		}
-
-	})
-
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(*listenAddr, nil))
 }
