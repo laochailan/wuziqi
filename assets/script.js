@@ -1,27 +1,27 @@
-var board;
-var gameState = States.DISCONNECTED;
-var strokeColor;
-var socket = null;
-
 const PlayerMessageTypes = Object.freeze({
   MOVE: 0,
   RESIGN: 1,
   RESTART: 2,
-})
+});
 
 const HostMessageTypes = Object.freeze({
   STATUS_UPDATE: 0,
   WAIT_FOR_PLAYER_JOIN: 1,
   REQUEST_TURN: 2,
   GAME_OVER: 3,
-})
+});
 
 const States = Object.freeze({
   REQUEST_TURN: 0,
   AWAIT_OPPONENT_TURN: 1,
   GAME_OVER: 2,
   DISCONNECTED: 3,
-})
+});
+
+var board;
+var gameState = States.DISCONNECTED;
+var strokeColor;
+var socket = null;
 
 function boardPlayerOfTurn(board, turn) {
   return turn % 2;
