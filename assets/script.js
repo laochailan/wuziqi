@@ -1,3 +1,8 @@
+var board;
+var gameState = States.DISCONNECTED;
+var strokeColor;
+var socket = null;
+
 const PlayerMessageTypes = Object.freeze({
   MOVE: 0,
   RESIGN: 1,
@@ -19,25 +24,19 @@ const States = Object.freeze({
 })
 
 function boardPlayerOfTurn(board, turn) {
-	return turn % 2
+  return turn % 2;
 }
 
 function roundPx(x) {
-  return Math.round(x)
+  return Math.round(x);
 }
-
-var board;
-var gameState = States.DISCONNECTED;
-
-var strokeColor;
 
 function socketListener(event) {
   msg = JSON.parse(event.data);
-  console.log(msg)
 
   var messageBox = document.getElementById("message-box");
   var resignLink = document.getElementById("resign-link");
-     
+
   if(msg.Type == HostMessageTypes.REQUEST_TURN) {
     messageBox.textContent = "Your turn!";
     resignLink.style.visibility = "visible";
@@ -59,11 +58,11 @@ function socketListener(event) {
       const restartLink = ' <a href="#" onclick="restartGame()">New Game?</a>';
       messageBox.innerHTML += restartLink;
     }
-    
+
     resignLink.style.visibility = "hidden";
     gameState = States.GAME_OVER;
   }
-    
+
   if(msg.Board != null) {
     board = msg.Board;
 
@@ -77,11 +76,9 @@ function socketListener(event) {
       gameState = States.GAME_OVER;
     }
   }
- 
+
   drawCanvas();
 }
-
-var socket = null;
 
 function onload() {
   const canvas = document.getElementById("boardCanvas");
@@ -95,7 +92,7 @@ function onload() {
     messageBox.innerHTML = "Disconnected. <a href=\"../../\">New Game?</a>";
   });
 
-  const observer = new ResizeObserver(entries => {
+  const observer = new ResizeObserver((entries) => {
     for(const entry of entries) {
       const { width, height } = entry.contentRect;
       const scale = window.devicePixelRatio;
@@ -116,7 +113,7 @@ function onload() {
     const y = Math.floor((event.offsetY+borderWidthY) / ((height-borderWidthY*2) / boardSize));
     return [x, y]
   }
-    
+
   drawCanvas();
   canvas.addEventListener("click", (event) => {
     const [x, y] = getEventTile(event)
@@ -147,8 +144,6 @@ function onload() {
       clickable = newClickable;
     }
   });
-
-    
 }
 
 function resign() {
@@ -162,10 +157,10 @@ function resign() {
 
 function restartGame() {
   if(gameState == States.GAME_OVER) {
-      socket.send(JSON.stringify({
-        Type: PlayerMessageTypes.RESTART,
-        Move: {},
-      }));    
+    socket.send(JSON.stringify({
+      Type: PlayerMessageTypes.RESTART,
+      Move: {},
+    }));
   }
 }
 
@@ -191,7 +186,7 @@ function drawN(ctx, n, x, y, w, h) {
   ctx.moveTo(x + w / 2, y + h / 2);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  
+
   ctx.fillStyle = "white";
   ctx.font = "bold " + (0.7*h).toString() + "px Nunito";
   ctx.fillText(n.toString(), x + w / 2, y + h / 2 * 1.1);
@@ -243,10 +238,10 @@ function drawCanvas() {
           var tile = board.Tiles[y*boardSize + x]
           if(tile != 0) {
             if((tile + board.FirstUseX)%2 == 0) {
-              drawX(ctx, x*dx, y*dy, dx, dy) 
+              drawX(ctx, x*dx, y*dy, dx, dy);
             } else {
-              drawO(ctx, x*dx, y*dy, dx, dy) 
-            }          
+              drawO(ctx, x*dx, y*dy, dx, dy);
+            }
           }
         }
       }

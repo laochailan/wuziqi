@@ -24,7 +24,7 @@
 
 {{define "root"}}
 <!DOCTYPE html>
-<html>
+<html lang="en">
   {{template "header" .}}
   <body onload="onload()">
     <div id="content">
@@ -53,7 +53,7 @@
 
 {{define "landing"}}
 <!DOCTYPE html>
-<html>
+<html lang="en">
   {{template "header" .}}
   <body>
     <div id="landing">
@@ -65,8 +65,8 @@
       <input type="number" name="size" min="5" max="{{ .maxBoardSize }}" step="2" value = "15">
       <span>Your symbol:</span>
       <div>
-      <input type="radio" name="use-x" value="true" checked><img src="{{ .baseURL }}/assets/cross.svg" width="14" height="14">
-      <input type="radio" name="use-x" value="false"><img src="{{ .baseURL }}/assets/circle.svg" width="14" height="14">
+      <input type="radio" name="use-x" value="true" checked><img src="{{ .baseURL }}/assets/cross.svg" alt="cross" width="14" height="14">
+      <input type="radio" name="use-x" value="false"><img src="{{ .baseURL }}/assets/circle.svg" alt="circle" width="14" height="14">
       </div>
       <span>First player:</span>
       <div>
