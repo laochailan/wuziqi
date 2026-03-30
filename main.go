@@ -57,13 +57,13 @@ func writeBadRequest(w http.ResponseWriter, err error) {
 	w.Write([]byte("bad request"))
 }
 
-func getRequestURL(r *http.Request) string {
-	scheme := "http"
+func getRequestURL(r *http.Request, baseScheme string) string {
+	scheme := baseScheme
 	if r.TLS != nil {
-		scheme = "https"
+		scheme = baseScheme + "s"
 	}
 	if forwardedScheme := r.Header.Get("X-Forwarded-Proto"); forwardedScheme != "" {
-		scheme = forwardedScheme
+		scheme = baseScheme + string(forwardedScheme[len(forwardedScheme)-1])
 	}
 	host := r.Host
 	if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
@@ -125,6 +125,7 @@ func main() {
 		ids, err := gameManager.startGame(data.Size, (!data.UseX) != data.FirstPlayer)
 		if err != nil {
 			writeBadRequest(w, err)
+			return
 		}
 
 		if data.FirstPlayer {
@@ -146,20 +147,27 @@ func main() {
 			return
 		}
 
-		var share_link string
+		var shareLink string
 
 		if share := r.URL.Query().Get("share"); share != "" {
 			var err error
-			share_link, err = url.JoinPath(getRequestURL(r), "board", share, "/")
+			shareLink, err = url.JoinPath(getRequestURL(r, "http"), "board", share, "/")
 			if err != nil {
 				writeBadRequest(w, err)
 				return
 			}
 		}
-		err := templ.ExecuteTemplate(w, "root", map[string]any{
+
+		socketURL, err := url.JoinPath(getRequestURL(r, "ws"), "board", r.PathValue("boardid"), "/join")
+		if err != nil {
+			writeBadRequest(w, err)
+			return
+		}
+
+		err = templ.ExecuteTemplate(w, "root", map[string]any{
 			"baseURL":     r.Header.Get("X-Forwarded-Prefix"),
-			"shareLink":   share_link,
-			"ownId":       r.PathValue("boardid"),
+			"shareLink":   shareLink,
+			"socketURL":   socketURL,
 			"boardSize":   board.Size,
 			"boardWinner": board.Winner})
 		if err != nil {

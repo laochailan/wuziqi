@@ -25,6 +25,9 @@ body {
   margin: 0;
   flex: 0 1 auto;
 }
+#logo a {
+  text-decoration: none;
+}
 
 #boardCanvas {
   box-sizing: border-box;

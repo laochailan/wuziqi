@@ -87,7 +87,7 @@ function onload() {
   const canvas = document.getElementById("boardCanvas");
   strokeColor = window.getComputedStyle(document.body).getPropertyValue("--text-dark");
 
-  socket = new WebSocket(socketAddr);
+  socket = new WebSocket(socketURL);
   socket.addEventListener("message", socketListener);
   socket.addEventListener("close", (event) => {
     gameState = States.DISCONNECTED;

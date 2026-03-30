@@ -11,12 +11,12 @@
   <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,200..1000;1,200..1000&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ .baseURL }}/assets/style.css">
 
-  <title>五醍棋</title>
+  <title>五子棋</title>
 
   <script>
     const boardSize = {{ .boardSize }};
     const baseURL = "{{ .baseURL }}";
-    const socketAddr = "ws://" + window.location.host + baseURL + "/board/{{ .ownId }}/join"
+    const socketURL = "{{ .socketURL }}";
   </script>
   <script src="{{ .baseURL }}/assets/script.js"></script>
 </head>
@@ -28,7 +28,7 @@
   {{template "header" .}}
   <body onload="onload()">
     <div id="content">
-      <h1 id="logo">五子棋</h1>
+      <h1 id="logo"><a href="{{ .baseURL }}/">五子棋</a></h1>
       {{if .shareLink}}
         <div id="share-link-box" class="link-box {{if ne .boardWinner -1}}deactivated{{end}}">
         Share link with other player:
@@ -57,7 +57,7 @@
   {{template "header" .}}
   <body>
     <div id="landing">
-      <h1 id="logo">五子棋</h1>
+      <h1 id="logo"><a href="{{ .baseURL }}/">五子棋</a></h1>
       
       <form action="{{ .baseURL }}/start" method="get">
       <div class="form">

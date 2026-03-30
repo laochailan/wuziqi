@@ -25,7 +25,7 @@ func (b *Board) Reset() {
 }
 
 func (b *Board) Clone() *Board {
-	copied := &*b
+	copied := &Board{b.FirstUseX, b.Size, b.Tiles, b.Turn, b.Winner}
 	copied.Tiles = slices.Clone(copied.Tiles)
 	return copied
 }
