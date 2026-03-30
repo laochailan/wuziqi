@@ -119,14 +119,18 @@ function onload() {
     const [x, y] = getEventTile(event)
 
     if(gameState == States.REQUEST_TURN) {
-      socket.send(JSON.stringify({
-        Type: PlayerMessageTypes.MOVE,
-        Move: {
-          X: x,
-          Y: y,
-        }
-      }));
-      gameState = States.AWAIT_OPPONENT_TURN;
+      if(board.Tiles[y * boardSize + x] == 0) {
+        socket.send(JSON.stringify({
+          Type: PlayerMessageTypes.MOVE,
+          Move: {
+            X: x,
+            Y: y,
+          }
+        }));
+        board.Tiles[y * boardSize + x] = board.Turn;
+        drawCanvas();
+        gameState = States.AWAIT_OPPONENT_TURN;
+      }
     }
   });
 
