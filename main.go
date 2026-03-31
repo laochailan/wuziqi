@@ -54,8 +54,11 @@ func getRequestURL(r *http.Request, baseScheme string) string {
 	if r.TLS != nil {
 		scheme = baseScheme + "s"
 	}
-	if forwardedScheme := r.Header.Get("X-Forwarded-Proto"); forwardedScheme != "" {
-		scheme = baseScheme + string(forwardedScheme[len(forwardedScheme)-1])
+	// forwarded proto takes precedence
+	if r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = baseScheme + "s"
+	} else {
+		scheme = baseScheme
 	}
 	host := r.Host
 	if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
