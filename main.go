@@ -49,14 +49,6 @@ func parseNewGameDataForm(r *http.Request) (*NewGameData, error) {
 	return &NewGameData{size, firstPlayer, useX}, nil
 }
 
-func writeBadRequest(w http.ResponseWriter, err error) {
-	if err != nil {
-		log.Println(err)
-	}
-	w.WriteHeader(http.StatusBadRequest)
-	w.Write([]byte("bad request"))
-}
-
 func getRequestURL(r *http.Request, baseScheme string) string {
 	scheme := baseScheme
 	if r.TLS != nil {
@@ -94,6 +86,25 @@ func main() {
 
 	templ := template.Must(template.ParseFS(templateFS, "templates.html"))
 
+	writeBadRequest := func(w http.ResponseWriter, r *http.Request, err error, message string, status int) {
+		if err != nil {
+			log.Println(err)
+		}
+		w.WriteHeader(status)
+
+		err = templ.ExecuteTemplate(w, "error", map[string]any{
+			"baseURL": r.Header.Get("X-Forwarded-Prefix"),
+			"message": message,
+		})
+		if err != nil {
+			log.Println(err)
+		}
+	}
+
+	internalServerError := func(w http.ResponseWriter, r *http.Request, err error) {
+		writeBadRequest(w, r, err, "Internal server error.", http.StatusInternalServerError)
+	}
+
 	http.Handle("GET /assets/", http.FileServer(http.FS(staticFS)))
 
 	http.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +118,7 @@ func main() {
 		})
 
 		if err != nil {
-			writeBadRequest(w, err)
+			internalServerError(w, r, err)
 		}
 	})
 
@@ -118,13 +129,13 @@ func main() {
 		}
 		data, err := parseNewGameDataForm(r)
 		if err != nil {
-			writeBadRequest(w, err)
+			writeBadRequest(w, r, err, "Failed to start new game.", http.StatusBadRequest)
 			return
 		}
 
 		ids, err := gameManager.startGame(data.Size, (!data.UseX) != data.FirstPlayer)
 		if err != nil {
-			writeBadRequest(w, err)
+			writeBadRequest(w, r, err, "Failed to start new game.", http.StatusBadRequest)
 			return
 		}
 
@@ -143,7 +154,7 @@ func main() {
 		}
 		board, _ := gameManager.boardAndPlayer(r.PathValue("boardid"))
 		if board == nil {
-			writeBadRequest(w, fmt.Errorf("player tried to join nonexisting game"))
+			writeBadRequest(w, r, fmt.Errorf("player tried to join nonexisting game"), "This game no longer exists.", http.StatusBadRequest)
 			return
 		}
 
@@ -153,14 +164,14 @@ func main() {
 			var err error
 			shareLink, err = url.JoinPath(getRequestURL(r, "http"), "board", share, "/")
 			if err != nil {
-				writeBadRequest(w, err)
+				internalServerError(w, r, err)
 				return
 			}
 		}
 
 		socketURL, err := url.JoinPath(getRequestURL(r, "ws"), "board", r.PathValue("boardid"), "/join")
 		if err != nil {
-			writeBadRequest(w, err)
+			internalServerError(w, r, err)
 			return
 		}
 
@@ -171,7 +182,7 @@ func main() {
 			"boardSize":   board.Size,
 			"boardWinner": board.Winner})
 		if err != nil {
-			writeBadRequest(w, err)
+			internalServerError(w, r, err)
 			return
 		}
 	})

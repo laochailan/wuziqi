@@ -81,3 +81,18 @@
   </body>
 </html>
 {{end}}
+
+{{define "error"}}
+<!DOCTYPE html>
+<html lang="en">
+  {{template "header" .}}
+  <body>
+    <div id="landing">
+      <h1 id="logo"><a href="{{ .baseURL }}/">五子棋</a></h1>
+      <p>
+        {{ .message }} <a href="{{ .baseURL }}/">New game?</a>
+      </p>
+    </div>
+  </body>
+</html>
+{{end}}
