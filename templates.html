@@ -1,17 +1,16 @@
 {{define "header"}}
 <head>
+  <title>五子棋</title>
+
+  <meta charset="UTF-8">
+  <meta name="description" content="Simple online multiplayer version of the game 五子棋.">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,200..1000;1,200..1000&display=swap" rel="stylesheet">
+  <link rel="preload" href="{{ .baseURL }}/assets/Nunito.ttf" as="font" type="font/ttf" crossorigin>
+  <style>
+  {{template "fonts".}}
+  </style>
   <link rel="stylesheet" href="{{ .baseURL }}/assets/style.css">
-
-  <title>五子棋</title>
 
   <script>
     const boardSize = {{ .boardSize }};
@@ -22,13 +21,17 @@
 </head>
 {{end}}
 
+{{define "logo"}}
+<a id="logo" href="{{ .baseURL }}/"><img alt="五子棋" width="135" height="40" src="{{.baseURL}}/assets/logo.svg"></a>
+{{end}}
+
 {{define "root"}}
 <!DOCTYPE html>
 <html lang="en">
   {{template "header" .}}
   <body onload="onload()">
     <div id="content">
-      <h1 id="logo"><a href="{{ .baseURL }}/">五子棋</a></h1>
+      {{template "logo".}}
       {{if .shareLink}}
         <div id="share-link-box" class="link-box {{if ne .boardWinner -1}}deactivated{{end}}">
         Share link with other player:
@@ -38,7 +41,7 @@
         </div>
       {{end}}
 
-      <div id="message-box"></div>
+      <div id="message-box">Waiting for opponent to connect.</div>
       <canvas id="boardCanvas" width="400" height="400"></canvas>
       <div id="resign-div">
       <button id="resign-link" class="button" onclick="resign()">Resign</button>
@@ -57,7 +60,7 @@
   {{template "header" .}}
   <body>
     <div id="landing">
-      <h1 id="logo"><a href="{{ .baseURL }}/">五子棋</a></h1>
+      {{template "logo".}}
       
       <form action="{{ .baseURL }}/start" method="get">
       <div class="form">
@@ -88,11 +91,28 @@
   {{template "header" .}}
   <body>
     <div id="landing">
-      <h1 id="logo"><a href="{{ .baseURL }}/">五子棋</a></h1>
+      {{template "logo".}}
       <p>
         {{ .message }} <a href="{{ .baseURL }}/">New game?</a>
       </p>
     </div>
   </body>
 </html>
+{{end}}
+
+{{define "fonts"}}
+@font-face {
+  font-family: 'Nunito';
+  font-style: italic;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url('{{.baseURL}}/assets/Nunito-italic.ttf') format('truetype-variations');
+}
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url('{{.baseURL}}/assets/Nunito.ttf') format('truetype-variations');
+}
 {{end}}

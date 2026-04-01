@@ -1,5 +1,6 @@
 body {
-  font-family: Nunito;
+  font-family: "Nunito";
+  font-weight: 400;
 
   --bg-dark: #3B5249;
   --bg-light: #e6dbc3;
@@ -21,12 +22,19 @@ body {
 }
 
 #logo {
-  font-family: "Ma Shan Zheng";
-  margin: 0;
-  flex: 0 1 auto;
-}
-#logo a {
   text-decoration: none;
+  display: inline-block;
+}
+
+#logo img {
+  display: block;
+}
+
+#content #logo {
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
 }
 
 #boardCanvas {
@@ -41,7 +49,7 @@ body {
 }
 
 a {
-  font-weight:bold;
+  font-weight: 700;
   color: var(--text-dark);
 }
 
